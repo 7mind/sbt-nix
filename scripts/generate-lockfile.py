@@ -90,7 +90,8 @@ def find_coursier_artifacts(cache_dir: Path) -> list[Path]:
             continue
 
         for path in https_dir.rglob("*"):
-            if path.is_file() and path.suffix in (".jar", ".pom"):
+            # Include Maven artifacts (.jar, .pom) and Ivy artifacts (.xml for ivy.xml)
+            if path.is_file() and path.suffix in (".jar", ".pom", ".xml"):
                 artifacts.append(path)
 
     return sorted(artifacts)
