@@ -20,10 +20,10 @@ This approach avoids fixed-output derivations (FODs) and provides fully reproduc
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    sbt-nix.url = "github:7mind/sbt-nix";
+    squish-find-the-brains.url = "github:7mind/squish-find-the-brains";
   };
 
-  outputs = { self, nixpkgs, flake-utils, sbt-nix }:
+  outputs = { self, nixpkgs, flake-utils, squish-find-the-brains }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -31,12 +31,12 @@ This approach avoids fixed-output derivations (FODs) and provides fully reproduc
           config.allowUnfree = true;
         };
 
-        coursierCache = sbt-nix.lib.mkCoursierCache {
+        coursierCache = squish-find-the-brains.lib.mkCoursierCache {
           inherit pkgs;
           lockfilePath = ./deps.lock.json;
         };
 
-        sbtSetup = sbt-nix.lib.mkSbtSetup {
+        sbtSetup = squish-find-the-brains.lib.mkSbtSetup {
           inherit pkgs coursierCache;
         };
       in
@@ -83,7 +83,7 @@ the `{"args": [";reload plugins; update; reload return"]},` line is especially i
 ### 3. Generate lockfile
 
 ```bash
-nix run github:7mind/sbt-nix -- lockfile-config.json > deps.lock.json
+nix run github:7mind/squish-find-the-brains -- lockfile-config.json > deps.lock.json
 ```
 
 ### 4. Build
@@ -99,7 +99,7 @@ nix build
 Builds a Coursier cache from a lockfile.
 
 ```nix
-sbt-nix.lib.mkCoursierCache {
+squish-find-the-brains.lib.mkCoursierCache {
   pkgs = pkgs;                    # required: nixpkgs package set
   lockfilePath = ./deps.lock.json; # required: path to lockfile
 }
@@ -112,7 +112,7 @@ Returns a derivation containing the reconstructed Coursier cache.
 Generates sbt setup configuration for use in custom derivations.
 
 ```nix
-sbt-nix.lib.mkSbtSetup {
+squish-find-the-brains.lib.mkSbtSetup {
   pkgs = pkgs;                    # required: nixpkgs package set
   coursierCache = coursierCache;  # required: from mkCoursierCache
   jdk = pkgs.jdk21;              # optional: JDK to use (default: jdk21)
@@ -130,7 +130,7 @@ Returns an attrset with:
 Creates a development shell for sbt projects.
 
 ```nix
-sbt-nix.lib.mkSbtShell {
+squish-find-the-brains.lib.mkSbtShell {
   pkgs = pkgs;                    # required: nixpkgs package set
   jdk = pkgs.jdk21;              # optional: JDK to use
   extraPackages = [];            # optional: additional packages
@@ -177,11 +177,11 @@ cd test
 # Generate lockfile
 nix develop ..#default --command python ../scripts/generate-lockfile.py lockfile-config.json > deps.lock.json
 
-# Build with local sbt-nix
-nix build --override-input sbt-nix path:..
+# Build with local squish-find-the-brains
+nix build --override-input squish-find-the-brains path:..
 
 # Run
-./result/bin/sbt-nix-test
+./result/bin/squish-find-the-brains-test
 ```
 
 ## Alternatives
@@ -196,7 +196,7 @@ nix build --override-input sbt-nix path:..
 - Hash must be updated when dependencies change
 - Less granular caching
 
-**sbt-nix (lockfile approach)**:
+**squish-find-the-brains (lockfile approach)**:
 - Each dependency is a separate content-addressed derivation
 - Better caching - unchanged dependencies are reused
 - Lockfile provides visibility into exact dependencies
@@ -204,7 +204,7 @@ nix build --override-input sbt-nix path:..
 
 Choose based on your needs:
 - Use **sbt-derivation** for simpler projects or when you prefer less setup
-- Use **sbt-nix** for better caching, reproducibility, and dependency visibility
+- Use **squish-find-the-brains** for better caching, reproducibility, and dependency visibility
 
 ## License
 
