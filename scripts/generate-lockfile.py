@@ -124,95 +124,112 @@ def path_to_url(path: Path, cache_dir: Path) -> str:
         raise ValueError(f"Unexpected path structure (no 'https'): {path}")
 
 
-def generate_lockfile(project_dir: Path, config: Config) -> dict:
+def generate_lockfile(project_dir: Path, config: Config, keep_temp: bool = False) -> dict:
     """Generate lockfile for the sbt project."""
 
-    with tempfile.TemporaryDirectory() as temp_dir:
+    if keep_temp:
+        temp_dir = tempfile.mkdtemp(prefix="sbt-nix-lockfile-")
+        temp_home = Path(temp_dir)
+        log(f"=== Debug mode: temp directory will be kept at {temp_home} ===")
+    else:
+        temp_context = tempfile.TemporaryDirectory()
+        temp_dir = temp_context.__enter__()
         temp_home = Path(temp_dir)
 
-        # Set up isolated environment
-        coursier_cache = temp_home / ".cache" / "coursier"
-        sbt_global = temp_home / ".sbt"
-        sbt_boot = sbt_global / "boot"
+    try:
+        return _generate_lockfile_impl(project_dir, config, temp_home)
+    finally:
+        if not keep_temp:
+            temp_context.__exit__(None, None, None)
+        else:
+            log(f"=== Temp directory preserved at: {temp_home} ===")
 
-        coursier_cache.mkdir(parents=True)
-        sbt_global.mkdir(parents=True)
-        sbt_boot.mkdir(parents=True)
 
-        # Environment for sbt
-        env = os.environ.copy()
-        env["HOME"] = str(temp_home)
-        env["COURSIER_CACHE"] = str(coursier_cache)
-        env["SBT_GLOBAL_BASE"] = str(sbt_global)
-        env["SBT_BOOT_DIRECTORY"] = str(sbt_boot)
-        env["SBT_OPTS"] = f"-Dsbt.boot.directory={sbt_boot} -Dsbt.coursier.home={coursier_cache}"
+def _generate_lockfile_impl(project_dir: Path, config: Config, temp_home: Path) -> dict:
+    """Implementation of lockfile generation."""
+    # Set up isolated environment
+    coursier_cache = temp_home / ".cache" / "coursier"
+    sbt_global = temp_home / ".sbt"
+    sbt_boot = sbt_global / "boot"
 
-        log("=== Phase 1: Populating caches ===")
-        log(f"Home: {temp_home}")
+    coursier_cache.mkdir(parents=True)
+    sbt_global.mkdir(parents=True)
+    sbt_boot.mkdir(parents=True)
 
-        # Clean target directories
-        log("Cleaning target directory...")
-        target_dir = project_dir / "target"
-        project_target = project_dir / "project" / "target"
-        if target_dir.exists():
-            shutil.rmtree(target_dir)
-        if project_target.exists():
-            shutil.rmtree(project_target)
+    # Environment for sbt
+    env = os.environ.copy()
+    env["HOME"] = str(temp_home)
+    env["COURSIER_CACHE"] = str(coursier_cache)
+    env["SBT_GLOBAL_BASE"] = str(sbt_global)
+    env["SBT_BOOT_DIRECTORY"] = str(sbt_boot)
+    env["SBT_OPTS"] = f"-Dsbt.boot.directory={sbt_boot} -Dsbt.coursier.home={coursier_cache}"
 
-        # Run sbt commands from config
-        for i, sbt_run in enumerate(config.sbt_runs, 1):
-            cmd = ["sbt", "--batch"] + sbt_run.args
-            log(f"Running sbt ({i}/{len(config.sbt_runs)}): {' '.join(cmd)}")
-            result = subprocess.run(
-                cmd,
-                env=env,
-                cwd=project_dir,
-                capture_output=True,
-                text=True,
-            )
-            # Log launcher messages
-            for line in result.stderr.split('\n'):
-                if '[launcher]' in line:
-                    log(f"[info] {line.strip()}")
-            if result.returncode != 0:
-                log(f"sbt failed:\n{result.stdout}\n{result.stderr}")
-                raise RuntimeError(f"sbt command failed: {' '.join(cmd)}")
+    log("=== Phase 1: Populating caches ===")
+    log(f"Home: {temp_home}")
 
-        log("=== Phase 2: Generating lockfile ===")
+    # Clean target directories
+    log("Cleaning target directory...")
+    target_dir = project_dir / "target"
+    project_target = project_dir / "project" / "target"
+    if target_dir.exists():
+        shutil.rmtree(target_dir)
+    if project_target.exists():
+        shutil.rmtree(project_target)
 
-        # Assert no Ivy artifacts (modern sbt uses Coursier only)
-        ivy_cache = temp_home / ".ivy2" / "cache"
-        assert_no_ivy_artifacts(ivy_cache)
+    # Run sbt commands from config
+    for i, sbt_run in enumerate(config.sbt_runs, 1):
+        cmd = ["sbt", "--batch"] + sbt_run.args
+        log(f"Running sbt ({i}/{len(config.sbt_runs)}): {' '.join(cmd)}")
+        result = subprocess.run(
+            cmd,
+            env=env,
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+        )
+        # Log launcher messages
+        for line in result.stderr.split('\n'):
+            if '[launcher]' in line:
+                log(f"[info] {line.strip()}")
+        if result.returncode != 0:
+            log(f"sbt failed:\n{result.stdout}\n{result.stderr}")
+            raise RuntimeError(f"sbt command failed: {' '.join(cmd)}")
 
-        # Find Coursier artifacts
-        coursier_artifacts = find_coursier_artifacts(coursier_cache)
-        log(f"Found {len(coursier_artifacts)} Coursier artifacts")
+    log("=== Phase 2: Generating lockfile ===")
 
-        if not coursier_artifacts:
-            raise AssertionError("No Coursier artifacts found - sbt may have failed to download dependencies")
+    # Assert no Ivy artifacts (modern sbt uses Coursier only)
+    ivy_cache = temp_home / ".ivy2" / "cache"
+    assert_no_ivy_artifacts(ivy_cache)
 
-        # Process Coursier artifacts
-        entries = []
-        for i, path in enumerate(coursier_artifacts, 1):
-            url = path_to_url(path, coursier_cache)
-            sha256 = compute_sha256(path)
-            entries.append({
-                "url": url,
-                "sha256": sha256,
-            })
+    # Find Coursier artifacts
+    coursier_artifacts = find_coursier_artifacts(coursier_cache)
+    log(f"Found {len(coursier_artifacts)} Coursier artifacts")
 
-            if i % 100 == 0:
-                log(f"  Processed {i} artifacts...")
+    if not coursier_artifacts:
+        raise AssertionError("No Coursier artifacts found - sbt may have failed to download dependencies")
 
-        # Sort entries by URL for deterministic output
-        entries.sort(key=lambda e: e["url"])
+    # Process Coursier artifacts
+    entries = []
+    for i, path in enumerate(coursier_artifacts, 1):
+        url = path_to_url(path, coursier_cache)
+        sha256 = compute_sha256(path)
+        entries.append({
+            "url": url,
+            "sha256": sha256,
+        })
 
-        log(f"=== Done! Processed {len(entries)} artifacts ===")
+        if i % 100 == 0:
+            log(f"  Processed {i} artifacts...")
 
-        return {
-            "version": 1,
-            "artifacts": entries,
-        }
+    # Sort entries by URL for deterministic output
+    entries.sort(key=lambda e: e["url"])
+
+    log(f"=== Done! Processed {len(entries)} artifacts ===")
+
+    return {
+        "version": 1,
+        "artifacts": entries,
+    }
 
 
 def main() -> None:
@@ -224,11 +241,16 @@ def main() -> None:
         type=Path,
         help="Path to JSON config file with sbt_runs definition"
     )
+    parser.add_argument(
+        "--keep-temp",
+        action="store_true",
+        help="Keep temporary directory for debugging"
+    )
     args = parser.parse_args()
 
     config = Config.load(args.config)
     project_dir = Path.cwd()
-    lockfile = generate_lockfile(project_dir, config)
+    lockfile = generate_lockfile(project_dir, config, keep_temp=args.keep_temp)
 
     # Output JSON to stdout
     json.dump(lockfile, sys.stdout, indent=2)
