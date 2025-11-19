@@ -71,11 +71,14 @@ Create `lockfile-config.json`:
 ```json
 {
   "sbt_runs": [
+    {"args": [";reload plugins; update; reload return"]},
     {"args": ["compile"]},
     {"args": ["assembly"]}
   ]
 }
 ```
+
+the `{"args": [";reload plugins; update; reload return"]},` line is especially important to make sure all the plugins were pulled in.
 
 ### 3. Generate lockfile
 
