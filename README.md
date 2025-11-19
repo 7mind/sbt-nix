@@ -1,4 +1,4 @@
-# sbt-nix
+# squish-find-the-brains
 
 Reusable Nix flake for building sbt projects with lockfile-based dependency management.
 
