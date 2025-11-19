@@ -139,11 +139,11 @@
         # Apps for easy execution
         apps = {
           generate-lockfile = {
-            type = "program";
+            type = "app";
             program = "${generateLockfile}/bin/sbt-nix-lockfile";
           };
           default = {
-            type = "program";
+            type = "app";
             program = "${generateLockfile}/bin/sbt-nix-lockfile";
           };
         };
