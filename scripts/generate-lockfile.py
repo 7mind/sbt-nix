@@ -7,6 +7,7 @@ Phase 2: Generate lockfile from populated caches with SHA256 hashes
 """
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -14,6 +15,9 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+NIX_BASE32_ALPHABET = "0123456789abcdfghijklmnpqrsvwxyz"
+HASH_READ_CHUNK_SIZE = 65536
 
 
 class SbtRun:
@@ -64,15 +68,32 @@ def log(message: str) -> None:
     print(message, file=sys.stderr)
 
 
+def _nix_base32(digest: bytes) -> str:
+    """Encode raw digest bytes using Nix's little-endian base32 alphabet."""
+    value = int.from_bytes(digest, "little")
+
+    encoded_reversed = []
+    while value > 0:
+        value, remainder = divmod(value, 32)
+        encoded_reversed.append(NIX_BASE32_ALPHABET[remainder])
+
+    target_length = (len(digest) * 8 + 4) // 5  # ceil(bits / 5)
+    encoded = "".join(reversed(encoded_reversed)).rjust(target_length, NIX_BASE32_ALPHABET[0])
+    return encoded
+
+
 def compute_sha256(path: Path) -> str:
-    """Compute nix-compatible SHA256 hash (base32)."""
-    result = subprocess.run(
-        ["nix-hash", "--flat", "--type", "sha256", "--base32", str(path)],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return result.stdout.strip()
+    """Compute nix-compatible SHA256 hash (base32) for a regular file."""
+    resolved = path.resolve(strict=True)
+    if not resolved.is_file():
+        raise ValueError(f"Expected file for hashing, got: {resolved}")
+
+    hasher = hashlib.sha256()
+    with resolved.open("rb") as artifact:
+        for chunk in iter(lambda: artifact.read(HASH_READ_CHUNK_SIZE), b""):
+            hasher.update(chunk)
+
+    return _nix_base32(hasher.digest())
 
 
 def find_coursier_artifacts(cache_dir: Path) -> list[Path]:
