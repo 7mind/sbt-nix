@@ -20,7 +20,7 @@ This approach avoids fixed-output derivations (FODs) and provides fully reproduc
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    sbt-nix.url = "github:YOUR-USERNAME/sbt-nix";
+    sbt-nix.url = "github:7mind/sbt-nix";
   };
 
   outputs = { self, nixpkgs, flake-utils, sbt-nix }:
@@ -77,7 +77,7 @@ Create `lockfile-config.json`:
 ### 3. Generate lockfile
 
 ```bash
-nix run github:YOUR-USERNAME/sbt-nix -- lockfile-config.json > deps.lock.json
+nix run github:7mind/sbt-nix -- lockfile-config.json > deps.lock.json
 ```
 
 ### 4. Build
